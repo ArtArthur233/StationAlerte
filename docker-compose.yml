@@ -1,0 +1,95 @@
+# Services locaux : base de données (V4) et faux serveur d'e-mails (V5).
+# Développement : docker compose up -d --wait   (depuis la racine ; API, surveillant et site lancés à part)
+# Tout dans Docker (V8.4) : docker compose --profile app up -d --build   → site sur http://localhost:4173
+services:
+  db:
+    image: postgres:17
+    environment:
+      # Identifiants de développement uniquement, jamais utilisés en production
+      POSTGRES_USER: stationalerte
+      POSTGRES_PASSWORD: stationalerte
+      POSTGRES_DB: stationalerte
+    ports:
+      # 127.0.0.1 : la base n'est joignable que depuis ce PC, pas par les autres appareils du Wi-Fi
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      # « docker compose up -d --wait » attend que la base accepte vraiment les connexions
+      test: ["CMD-SHELL", "pg_isready -U stationalerte -d stationalerte"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      # Les données survivent à l'arrêt et à la suppression du conteneur
+      - pgdata:/var/lib/postgresql/data
+
+  # Faux serveur d'e-mails (mode test) : les e-mails « envoyés » par l'API sont capturés ici, jamais
+  # envoyés sur internet. Les lire : http://localhost:8025
+  mail:
+    image: axllent/mailpit:v1.31.2
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP : là où l'API dépose les e-mails
+      - "127.0.0.1:8025:8025" # page web pour les lire
+
+  # --- Profil « app » (V8.4) : l'application entière dans Docker, sans Python, uv ni Node.js sur le PC. ---
+  # Sans « --profile app », ces services ne démarrent pas. Ne pas lancer en même temps que lancer-dev.bat
+  # (mêmes ports, et un seul surveillant à la fois).
+
+  # Applique les migrations Alembic puis s'arrête ; l'API et le surveillant attendent qu'il ait réussi.
+  migrate:
+    profiles: [app]
+    build: ./backend
+    image: station-alerte-backend  # une seule image pour migrate, api et worker
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-env
+      # Réglages de développement (pas de secret) ; dans Docker, la base et Mailpit s'appellent db et mail.
+      DATABASE_URL: postgresql+psycopg://stationalerte:stationalerte@db:5432/stationalerte
+      SMTP_HOST: mail
+      SMTP_PORT: "1025"
+      FRONTEND_URL: http://localhost:4173
+      # Espace de démonstration du site (stationTest), local uniquement.
+      DEMO_MODE: "true"
+      TEST_STATION_FILE: /app/demo/test_station.json
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    profiles: [app]
+    build: ./backend
+    image: station-alerte-backend  # une seule image pour migrate, api et worker
+    environment: *backend-env
+    volumes: [demo:/app/demo]  # même fichier stationTest que le surveillant
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Même image que l'API, autre commande. Compte de démonstration : docker compose exec worker python -m app.demo creer
+  worker:
+    profiles: [app]
+    build: ./backend
+    image: station-alerte-backend  # une seule image pour migrate, api et worker
+    command: ["python", "-m", "app.worker"]
+    environment: *backend-env
+    volumes: [demo:/app/demo]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mail:
+        condition: service_started
+
+  site:
+    profiles: [app]
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${SITE_PORT:-4173}:80"
+    restart: unless-stopped
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  demo:  # fichier de stationTest (profil app) : survit à la reconstruction des conteneurs

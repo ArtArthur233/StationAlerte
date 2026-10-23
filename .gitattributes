@@ -1,0 +1,4 @@
+# Fins de ligne imposées quel que soit le PC : un script shell avec des fins de ligne Windows plante sur Mac et Linux,
+# un .bat avec des fins de ligne Linux peut mal se lire sous Windows.
+*.sh text eol=lf
+*.bat text eol=crlf

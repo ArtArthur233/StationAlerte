@@ -1,0 +1,70 @@
+# Intégration continue : à chaque push ou pull request vers main, GitHub relance tous les tests
+# sur une machine neuve. Une coche verte sur le commit = tout passe ailleurs que sur mon PC.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # Base PostgreSQL neuve et vide, même image que docker-compose.yml, détruite à la fin du job.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: stationalerte
+          POSTGRES_PASSWORD: stationalerte
+          POSTGRES_DB: stationalerte
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stationalerte"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      # Pas de fichier .env sur GitHub : les réglages viennent d'ici (identifiants de test, sans secret).
+      DATABASE_URL: postgresql+psycopg://stationalerte:stationalerte@127.0.0.1:5432/stationalerte
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.0"  # même version que le PC de développement et le Dockerfile
+      - name: Installer les dépendances (figées par uv.lock)
+        run: uv sync --frozen
+      # Échoue si la base est injoignable : sans cette étape, conftest.py ignorerait les tests de base
+      # et le job serait vert à tort.
+      - name: Appliquer les migrations
+        run: uv run alembic upgrade head
+      - name: Lancer les tests
+        run: uv run pytest
+
+  frontend:
+    name: Frontend (lint, vitest, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Installer les dépendances (figées par package-lock.json)
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npx vitest run
+      - name: Build (vérification des types + compilation)
+        run: npm run build

@@ -1,0 +1,20 @@
+# Secrets et configurations locales : ne jamais les versionner
+.env
+.env.*
+!.env.example
+
+# Station fictive de test (backend/app/test_station.py) : locale, jamais versionnée ni en production
+backend/data/test_station.json
+
+# Dépendances et fichiers générés
+node_modules/
+dist/
+__pycache__/
+.venv/
+
+# Système / éditeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

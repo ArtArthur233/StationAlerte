@@ -1,0 +1,9 @@
+# Ce qui ne doit jamais entrer dans l'image : environnement local, réglages, station fictive, tests.
+.venv
+.env
+.env.*
+data/test_station.json
+tests
+node_modules
+**/__pycache__
+.pytest_cache

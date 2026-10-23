@@ -1,0 +1,21 @@
+[project]
+name = "station-alerte-backend"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.0",
+    "argon2-cffi>=25.1.0",
+    "fastapi[standard]>=0.143.0",
+    "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.2.4",
+    "sqlalchemy>=2.1.4",
+    "tzdata>=2026.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]  # permet aux tests de faire « import app »
